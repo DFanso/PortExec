@@ -400,7 +400,7 @@ func (m *Model) View() string {
 
 	// Pagination info
 	if len(m.filtered) > 0 {
-		sb.WriteString(fmt.Sprintf("Page %d/%d (%d total)\n\n", m.page+1, m.totalPages(), len(m.filtered)))
+		sb.WriteString(paginationStyle.Render(fmt.Sprintf("Page %d/%d • %d entries", m.page+1, m.totalPages(), len(m.filtered))))
 	} else {
 		sb.WriteString("\n")
 	}
@@ -448,8 +448,12 @@ func (m *Model) View() string {
 
 	// Table header
 	sb.WriteString(tableHeaderStyle.Render(
-		fmt.Sprintf("%-6s %-6s %-6s %-20s %-12s",
-			"PROTO", "PORT", "PID", "PROCESS", "STATE"),
+		fmt.Sprintf("%s %s %s %s %s",
+			padRight("PROTO", 5),
+			padRight("PORT", 6),
+			padRight("PID", 6),
+			padRight("PROCESS", 20),
+			"STATE"),
 	))
 	sb.WriteString("\n")
 
@@ -482,13 +486,28 @@ func (m *Model) View() string {
 // renderRow renders a single table row
 func (m *Model) renderRow(entry models.PortEntry) string {
 	stateStyle := getStateStyle(entry.State)
-	return fmt.Sprintf("%-6s %-6d %-6d %-20s %s",
-		entry.Protocol,
-		entry.Port,
-		entry.PID,
-		truncate(entry.ProcessName, 20),
+
+	var protocolStyle lipgloss.Style
+	if entry.Protocol == "TCP" {
+		protocolStyle = protocolTCPStyle
+	} else {
+		protocolStyle = protocolUDPStyle
+	}
+
+	return fmt.Sprintf("%s %s %s %s %s",
+		protocolStyle.Render(padRight(entry.Protocol, 5)),
+		padRight(fmt.Sprintf("%d", entry.Port), 6),
+		padRight(fmt.Sprintf("%d", entry.PID), 6),
+		padRight(truncate(entry.ProcessName, 18), 20),
 		stateStyle.Render(entry.State),
 	)
+}
+
+func padRight(s string, length int) string {
+	if len(s) >= length {
+		return s[:length]
+	}
+	return s + strings.Repeat(" ", length-len(s))
 }
 
 // renderHelp renders the help overlay
@@ -514,7 +533,7 @@ func (m *Model) renderHelp() string {
 	}
 
 	for _, item := range helpItems {
-		sb.WriteString(fmt.Sprintf("  %s  %s\n", helpKeyStyle.Render(item.key), item.desc))
+		sb.WriteString(fmt.Sprintf("  %s  %s\n", helpKeyStyle.Render(item.key), helpDescStyle.Render(item.desc)))
 	}
 
 	sb.WriteString("\n")
@@ -525,7 +544,12 @@ func (m *Model) renderHelp() string {
 
 // renderKillConfirm renders the kill confirmation dialog
 func (m *Model) renderKillConfirm() string {
-	entry := m.filtered[m.selected]
+	pageEntries := m.getCurrentPageEntries()
+	if m.selected >= len(pageEntries) {
+		m.showKillConfirm = false
+		return ""
+	}
+	entry := pageEntries[m.selected]
 
 	var sb strings.Builder
 
@@ -537,11 +561,11 @@ func (m *Model) renderKillConfirm() string {
 		sb.WriteString("\n")
 		sb.WriteString(warningStyle.Render("Are you absolutely sure? This cannot be undone!"))
 	} else {
-		sb.WriteString(fmt.Sprintf("Kill process: %s (PID: %d)?\n", entry.ProcessName, entry.PID))
+		sb.WriteString(confirmStyle.Render(fmt.Sprintf("Kill %s (PID: %d)?", entry.ProcessName, entry.PID)))
 	}
 
-	sb.WriteString("\n")
-	sb.WriteString(confirmStyle.Render("[Y] Yes, kill it  [N] Cancel"))
+	sb.WriteString("\n\n")
+	sb.WriteString(fmt.Sprintf("%s  %s", confirmKeyStyle.Render("[Y] Yes"), confirmKeyCancelStyle.Render("[N] Cancel")))
 
 	return confirmOverlayStyle.Render(sb.String())
 }
@@ -571,7 +595,7 @@ func (m *Model) renderDetails() string {
 	}
 
 	for _, d := range details {
-		sb.WriteString(fmt.Sprintf("%s: %s\n", detailLabelStyle.Render(d.label), d.value))
+		sb.WriteString(fmt.Sprintf("%s: %s\n", detailLabelStyle.Render(d.label), detailValueStyle.Render(d.value)))
 	}
 
 	sb.WriteString("\n")
@@ -632,118 +656,182 @@ type refreshError struct {
 
 // Styles
 var (
+	// Brand colors
+	brandPurple = lipgloss.Color("99")
+	brandCyan   = lipgloss.Color("45")
+	brandPink   = lipgloss.Color("213")
+	brandGreen  = lipgloss.Color("82")
+	brandYellow = lipgloss.Color("226")
+	brandRed    = lipgloss.Color("204")
+	brandBlue   = lipgloss.Color("75")
+
+	// Dark theme colors
+	bgPrimary     = lipgloss.Color("236")
+	bgSecondary   = lipgloss.Color("235")
+	bgTertiary    = lipgloss.Color("234")
+	textPrimary   = lipgloss.Color("255")
+	textSecondary = lipgloss.Color("249")
+	textMuted     = lipgloss.Color("241")
+
 	headerStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("86")).
+			Foreground(brandCyan).
 			Bold(true).
 			Padding(0, 0, 1, 0)
 
 	footerStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
+			Foreground(textMuted).
 			Padding(1, 0, 0, 0)
 
 	tableHeaderStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("249")).
-				Bold(true)
+				Foreground(brandPink).
+				Bold(true).
+				Background(bgTertiary).
+				Padding(0, 1)
 
 	selectedRowStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("255")).
-				Background(lipgloss.Color("57")).
-				Bold(false)
+				Foreground(bgPrimary).
+				Background(brandCyan).
+				Bold(false).
+				Padding(0, 1)
 
 	emptyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
+			Foreground(textMuted).
 			Italic(true)
 
 	errorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("196")).
-			Bold(true)
+			Foreground(brandRed).
+			Bold(true).
+			Background(bgSecondary).
+			Padding(0, 1)
 
 	successStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("82")).
-			Bold(true)
+			Foreground(brandGreen).
+			Bold(true).
+			Background(bgSecondary).
+			Padding(0, 1)
 
 	warningStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("226")).
-			Background(lipgloss.Color("235"))
+			Foreground(brandYellow).
+			Background(bgSecondary).
+			Padding(0, 1)
 
 	loadingStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("75")).
+			Foreground(brandPink).
 			Italic(true)
 
 	searchStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("75")).
+			Foreground(brandYellow).
 			Bold(true)
 
-	// State styles
+	paginationStyle = lipgloss.NewStyle().
+			Foreground(textSecondary).
+			Bold(false)
+
+	// State styles with neon colors
 	stateListeningStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("82")) // Green
+				Foreground(brandGreen).
+				Bold(true)
 
 	stateEstablishedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("75")) // Blue
+				Foreground(brandBlue).
+				Bold(true)
 
 	stateWaitingStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("243")) // Gray
+				Foreground(textMuted).
+				Italic(true)
 
 	stateDefaultStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("white"))
+				Foreground(textPrimary)
+
+	// Protocol styles
+	protocolTCPStyle = lipgloss.NewStyle().
+				Foreground(brandCyan).
+				Bold(true)
+
+	protocolUDPStyle = lipgloss.NewStyle().
+				Foreground(brandPurple).
+				Bold(true)
 
 	// Help overlay
 	helpOverlayStyle = lipgloss.NewStyle().
-				Width(50).
-				Height(20).
-				Padding(1, 2).
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("75")).
-				Background(lipgloss.Color("235"))
+				Width(55).
+				Padding(2, 3).
+				Border(lipgloss.DoubleBorder()).
+				BorderForeground(brandCyan).
+				Background(bgSecondary).
+				BorderStyle(lipgloss.NormalBorder())
 
 	helpTitleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("86")).
-			Bold(true)
+			Foreground(brandCyan).
+			Bold(true).
+			Underline(true)
 
 	helpKeyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("75")).
-			Bold(true)
+			Foreground(brandPink).
+			Bold(true).
+			Background(bgTertiary).
+			Padding(0, 1)
+
+	helpDescStyle = lipgloss.NewStyle().
+			Foreground(textSecondary)
 
 	helpCloseStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			Italic(true)
+			Foreground(textMuted).
+			Italic(true).
+			Padding(1, 0, 0, 0)
 
 	// Confirm overlay
 	confirmOverlayStyle = lipgloss.NewStyle().
 				Width(60).
-				Height(15).
-				Padding(1, 2).
+				Padding(2, 3).
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("226")).
-				Background(lipgloss.Color("235"))
+				BorderForeground(brandYellow).
+				Background(bgSecondary)
 
 	confirmStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("86")).
+			Foreground(brandYellow).
 			Bold(true)
 
-	criticalWarningStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("196")).
+	confirmKeyStyle = lipgloss.NewStyle().
+			Foreground(brandGreen).
+			Bold(true).
+			Background(bgTertiary).
+			Padding(0, 1)
+
+	confirmKeyCancelStyle = lipgloss.NewStyle().
+				Foreground(brandRed).
 				Bold(true).
-				Background(lipgloss.Color("235"))
+				Background(bgTertiary).
+				Padding(0, 1)
+
+	criticalWarningStyle = lipgloss.NewStyle().
+				Foreground(brandRed).
+				Bold(true).
+				Background(bgSecondary).
+				Padding(0, 1)
 
 	// Details overlay
 	detailsOverlayStyle = lipgloss.NewStyle().
-				Width(50).
-				Height(20).
-				Padding(1, 2).
+				Width(55).
+				Padding(2, 3).
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("86")).
-				Background(lipgloss.Color("235"))
+				BorderForeground(brandCyan).
+				Background(bgSecondary)
 
 	detailsTitleStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("86")).
-				Bold(true)
+				Foreground(brandCyan).
+				Bold(true).
+				Underline(true)
 
 	detailLabelStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("75")).
+				Foreground(brandPink).
 				Bold(true)
 
+	detailValueStyle = lipgloss.NewStyle().
+				Foreground(textPrimary)
+
 	detailsCloseStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("241")).
-				Italic(true)
+				Foreground(textMuted).
+				Italic(true).
+				Padding(1, 0, 0, 0)
 )
