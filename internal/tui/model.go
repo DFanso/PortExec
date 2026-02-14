@@ -31,6 +31,10 @@ type Model struct {
 	errMsg          string
 	successMsg      string
 
+	// Pagination
+	page     int
+	pageSize int
+
 	// Admin status
 	isAdmin bool
 
@@ -67,6 +71,8 @@ func InitialModel() *Model {
 		searchQuery:     "",
 		errMsg:          "",
 		successMsg:      "",
+		page:            0,
+		pageSize:        20,
 		isAdmin:         isAdmin,
 		scanner:         scanner,
 		kill:            kill,
@@ -172,14 +178,23 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 		return m, nil
 
 	case "down", "j": // vi style
-		if m.selected < len(m.filtered)-1 {
+		if m.selected < len(m.getCurrentPageEntries())-1 {
 			m.selected++
 		}
 		return m, nil
 
+	case "pgup":
+		m.prevPage()
+		return m, nil
+
+	case "pgdown":
+		m.nextPage()
+		return m, nil
+
 	case "enter":
-		if len(m.filtered) > 0 && m.selected < len(m.filtered) {
-			m.selectedEntry = m.filtered[m.selected]
+		pageEntries := m.getCurrentPageEntries()
+		if len(pageEntries) > 0 && m.selected < len(pageEntries) {
+			m.selectedEntry = pageEntries[m.selected]
 			m.showDetails = true
 		}
 		return m, nil
@@ -253,24 +268,25 @@ func (m *Model) applyFilter() {
 			}
 		}
 	}
+	m.page = 0
+	m.selected = 0
 }
 
 // handleKill initiates the kill process
 func (m *Model) handleKill() (*Model, tea.Cmd) {
-	if len(m.filtered) == 0 || m.selected >= len(m.filtered) {
+	pageEntries := m.getCurrentPageEntries()
+	if len(pageEntries) == 0 || m.selected >= len(pageEntries) {
 		m.errMsg = "No process selected"
 		return m, nil
 	}
 
-	entry := m.filtered[m.selected]
+	entry := pageEntries[m.selected]
 
-	// Check for critical process
 	if entry.IsSystem {
 		m.showKillConfirm = true
 		return m, nil
 	}
 
-	// Show confirmation for non-critical processes
 	m.showKillConfirm = true
 	return m, nil
 }
@@ -280,14 +296,17 @@ func (m *Model) handleKillConfirm(msg tea.KeyMsg) (*Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
 		m.showKillConfirm = false
-		entry := m.filtered[m.selected]
+		pageEntries := m.getCurrentPageEntries()
+		if m.selected < len(pageEntries) {
+			entry := pageEntries[m.selected]
 
-		result := m.kill.Kill(entry.PID)
-		if result.Success {
-			m.successMsg = result.Message
-			return m, m.refresh()
-		} else {
-			m.errMsg = result.Message
+			result := m.kill.Kill(entry.PID)
+			if result.Success {
+				m.successMsg = result.Message
+				return m, m.refresh()
+			} else {
+				m.errMsg = result.Message
+			}
 		}
 
 	case "n", "N", "esc":
@@ -298,6 +317,40 @@ func (m *Model) handleKillConfirm(msg tea.KeyMsg) (*Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// Pagination methods
+func (m *Model) getCurrentPageEntries() []models.PortEntry {
+	start := m.page * m.pageSize
+	end := start + m.pageSize
+	if start >= len(m.filtered) {
+		return []models.PortEntry{}
+	}
+	if end > len(m.filtered) {
+		end = len(m.filtered)
+	}
+	return m.filtered[start:end]
+}
+
+func (m *Model) totalPages() int {
+	if len(m.filtered) == 0 {
+		return 1
+	}
+	return (len(m.filtered) + m.pageSize - 1) / m.pageSize
+}
+
+func (m *Model) nextPage() {
+	if m.page < m.totalPages()-1 {
+		m.page++
+		m.selected = 0
+	}
+}
+
+func (m *Model) prevPage() {
+	if m.page > 0 {
+		m.page--
+		m.selected = 0
+	}
 }
 
 // refresh triggers a data refresh
@@ -336,7 +389,14 @@ func (m *Model) View() string {
 
 	// Filter display
 	if !m.filter.IsEmpty() {
-		sb.WriteString(fmt.Sprintf("Filter: [%s]\n\n", m.filter.Port+m.filter.ProcessName+m.filter.PID))
+		sb.WriteString(fmt.Sprintf("Filter: [%s]  ", m.filter.Port+m.filter.ProcessName+m.filter.PID))
+	}
+
+	// Pagination info
+	if len(m.filtered) > 0 {
+		sb.WriteString(fmt.Sprintf("Page %d/%d (%d total)\n\n", m.page+1, m.totalPages(), len(m.filtered)))
+	} else {
+		sb.WriteString("\n")
 	}
 
 	// Loading state
@@ -388,7 +448,8 @@ func (m *Model) View() string {
 	sb.WriteString("\n")
 
 	// Table rows
-	for i, entry := range m.filtered {
+	pageEntries := m.getCurrentPageEntries()
+	for i, entry := range pageEntries {
 		row := m.renderRow(entry)
 		if i == m.selected {
 			sb.WriteString(selectedRowStyle.Render(row))
@@ -406,7 +467,7 @@ func (m *Model) View() string {
 	// Footer
 	sb.WriteString("\n")
 	sb.WriteString(footerStyle.Render(
-		"[k] Kill [r] Refresh [/] Filter [h] Help [q] Quit",
+		"[↑/↓] Navigate [PgUp/PgDn] Page [k] Kill [r] Refresh [/] Filter [h] Help [q] Quit",
 	))
 
 	return sb.String()
@@ -436,6 +497,7 @@ func (m *Model) renderHelp() string {
 		desc string
 	}{
 		{"↑/↓ or j/k", "Navigate list"},
+		{"PgUp/PgDn", "Change page"},
 		{"Enter", "View process details"},
 		{"k", "Kill selected process"},
 		{"r", "Refresh port list"},
