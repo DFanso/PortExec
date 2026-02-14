@@ -218,11 +218,12 @@ func (m *Model) handleSearchInput(msg tea.KeyMsg) (*Model, tea.Cmd) {
 	case "esc":
 		m.searchMode = false
 		m.searchQuery = ""
+		m.filter = models.FilterCriteria{}
+		m.applyFilter()
 		return m, nil
 
 	case "enter":
 		m.searchMode = false
-		m.applyFilterFromSearch()
 		m.selected = 0
 		return m, nil
 
@@ -230,11 +231,15 @@ func (m *Model) handleSearchInput(msg tea.KeyMsg) (*Model, tea.Cmd) {
 		if len(m.searchQuery) > 0 {
 			m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
 		}
+		m.applyFilterFromSearch()
+		m.selected = 0
 		return m, nil
 
 	default:
 		if len(msg.String()) == 1 {
 			m.searchQuery += msg.String()
+			m.applyFilterFromSearch()
+			m.selected = 0
 		}
 		return m, nil
 	}
@@ -423,7 +428,7 @@ func (m *Model) View() string {
 	// Search mode
 	if m.searchMode {
 		sb.WriteString(searchStyle.Render(fmt.Sprintf("Search: %s", m.searchQuery)))
-		sb.WriteString(" (press Enter to search, Esc to cancel)\n\n")
+		sb.WriteString(" (Esc to cancel)\n\n")
 	}
 
 	// Error message
