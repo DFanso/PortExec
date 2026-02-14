@@ -32,6 +32,61 @@ cd PortExec
 go build -o portexec.exe ./cmd/main.go
 ```
 
+## Run Anywhere in Terminal
+
+### Option 1: Add to PATH
+
+1. Create a folder for your executables (e.g., `C:\Bin`)
+2. Move `portexec.exe` to that folder
+3. Add to PATH:
+   - Press `Win + R`, type `sysdm.cpl`, press Enter
+   - Go to **Advanced** > **Environment Variables**
+   - Under **User variables**, find **Path** and click **Edit**
+   - Click **New** and add `C:\Bin`
+   - Click **OK** on all dialogs
+4. Open a new terminal and run `portexec`
+
+### Option 2: Windows Terminal Profile (Recommended)
+
+1. Download the release and extract to a folder (e.g., `C:\Program Files\PortExec`)
+2. Right-click the `.exe` file > **Create shortcut**
+3. Right-click the shortcut > **Properties**
+4. In the **Shortcut** tab, click **Advanced**
+5. Check **Run as administrator**
+6. Move the shortcut to your Desktop or Start Menu
+
+### Option 3: Winget
+
+```powershell
+winget install --id DFanso.PortExec --source winget
+```
+
+## Running with Admin Privileges
+
+PortExec requires administrator privileges to kill protected system processes.
+
+### Method 1: Run as Administrator
+
+1. Right-click on `portexec.exe`
+2. Select **Run as administrator**
+
+### Method 2: From PowerShell/CMD
+
+```powershell
+Start-Process -FilePath "portexec.exe" -Verb RunAs
+```
+
+### Method 3: From Windows Terminal
+
+1. Click the dropdown arrow in the terminal tab
+2. Select **Run as administrator**
+
+### Verification
+
+Run `portexec check` to verify admin status:
+- If admin: Shows "Running with administrator privileges"
+- If not admin: Shows "NOT running with administrator privileges" and some processes cannot be killed
+
 ## Usage
 
 ### Interactive TUI Mode
