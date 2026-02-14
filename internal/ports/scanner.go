@@ -165,7 +165,7 @@ func containsState(states []string, state string) bool {
 
 // Refresh reloads the connection data
 func (s *Scanner) Refresh() ([]models.PortEntry, error) {
-	return s.GetConnections([]string{"listen", "established"})
+	return s.GetConnections([]string{"LISTENING", "ESTABLISHED"})
 }
 
 // GetPortEntry finds a specific port entry by PID and port

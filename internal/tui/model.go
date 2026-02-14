@@ -36,6 +36,10 @@ type Model struct {
 	page     int
 	pageSize int
 
+	// Terminal dimensions
+	width  int
+	height int
+
 	// Admin status
 	isAdmin bool
 
@@ -50,6 +54,9 @@ type Model struct {
 	// For details view
 	selectedEntry models.PortEntry
 }
+
+// clearMsgTick is sent after a delay to clear status messages
+type clearMsgTick struct{}
 
 // InitialModel creates the initial TUI model
 func InitialModel() *Model {
@@ -74,6 +81,8 @@ func InitialModel() *Model {
 		successMsg:      "",
 		page:            0,
 		pageSize:        20,
+		width:           80,
+		height:          24,
 		isAdmin:         isAdmin,
 		scanner:         scanner,
 		kill:            kill,
@@ -84,6 +93,28 @@ func InitialModel() *Model {
 // Init initializes the model
 func (m *Model) Init() tea.Cmd {
 	return m.refresh()
+}
+
+// scheduleClearMsg returns a command that clears messages after a delay
+func scheduleClearMsg() tea.Cmd {
+	return tea.Tick(3*time.Second, func(_ time.Time) tea.Msg {
+		return clearMsgTick{}
+	})
+}
+
+// calcPageSize computes how many rows fit based on terminal height
+func (m *Model) calcPageSize() {
+	// Reserve lines: header(2) + admin warning(2) + pagination(1) + spacing(1) +
+	// table header(1) + footer(2) + some buffer(2) = ~11 overhead lines
+	overhead := 11
+	if !m.isAdmin {
+		overhead += 2 // admin warning takes extra lines
+	}
+	ps := m.height - overhead
+	if ps < 5 {
+		ps = 5
+	}
+	m.pageSize = ps
 }
 
 // Update handles messages
@@ -107,19 +138,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.isLoading = false
 		m.refreshing = false
 		m.mu.Unlock()
+		return m, scheduleClearMsg()
+
+	case clearMsgTick:
+		m.errMsg = ""
+		m.successMsg = ""
 		return m, nil
 
 	case tea.WindowSizeMsg:
-		// Handle window resize if needed
-	}
-
-	// Clear messages after delay
-	if m.errMsg != "" || m.successMsg != "" {
-		go func() {
-			time.Sleep(3 * time.Second)
-			// Note: We can't directly modify model from goroutine
-			// This would need to be handled differently in production
-		}()
+		m.width = msg.Width
+		m.height = msg.Height
+		m.calcPageSize()
+		return m, nil
 	}
 
 	return m, nil
@@ -156,7 +186,7 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 	case "ctrl+c", "q":
 		return m, tea.Quit
 
-	case "k":
+	case "x", "K": // Kill with x or Shift+K (not k, which is vim-up)
 		m2, cmd := m.handleKill()
 		return m2, cmd
 
@@ -172,13 +202,13 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 		m.showHelp = true
 		return m, nil
 
-	case "up", "w": // vi style - up arrow or w
+	case "up", "k": // vim style: k = up
 		if m.selected > 0 {
 			m.selected--
 		}
 		return m, nil
 
-	case "down", "j": // vi style
+	case "down", "j": // vim style: j = down
 		if m.selected < len(m.getCurrentPageEntries())-1 {
 			m.selected++
 		}
@@ -283,14 +313,7 @@ func (m *Model) handleKill() (*Model, tea.Cmd) {
 	pageEntries := m.getCurrentPageEntries()
 	if len(pageEntries) == 0 || m.selected >= len(pageEntries) {
 		m.errMsg = "No process selected"
-		return m, nil
-	}
-
-	entry := pageEntries[m.selected]
-
-	if entry.IsSystem {
-		m.showKillConfirm = true
-		return m, nil
+		return m, scheduleClearMsg()
 	}
 
 	m.showKillConfirm = true
@@ -309,10 +332,10 @@ func (m *Model) handleKillConfirm(msg tea.KeyMsg) (*Model, tea.Cmd) {
 			result := m.kill.Kill(entry.PID)
 			if result.Success {
 				m.successMsg = result.Message
-				return m, m.refresh()
-			} else {
-				m.errMsg = result.Message
+				return m, tea.Batch(m.refresh(), scheduleClearMsg())
 			}
+			m.errMsg = result.Message
+			return m, scheduleClearMsg()
 		}
 
 	case "n", "N", "esc":
@@ -401,12 +424,12 @@ func (m *Model) View() string {
 	// Pagination info
 	if len(m.filtered) > 0 {
 		sb.WriteString(paginationStyle.Render(fmt.Sprintf("Page %d/%d • %d entries", m.page+1, m.totalPages(), len(m.filtered))))
-	} else {
-		sb.WriteString("\n")
 	}
+	sb.WriteString("\n")
 
 	// Loading state
 	if m.isLoading {
+		sb.WriteString("\n")
 		sb.WriteString(loadingStyle.Render("Loading..."))
 		return sb.String()
 	}
@@ -429,29 +452,29 @@ func (m *Model) View() string {
 	// Search mode
 	if m.searchMode {
 		sb.WriteString(searchStyle.Render(fmt.Sprintf("Search: %s", m.searchQuery)))
-		sb.WriteString(" (Esc to cancel)\n\n")
+		sb.WriteString(" (Esc to cancel)\n")
 	}
 
 	// Error message
 	if m.errMsg != "" {
 		sb.WriteString(errorStyle.Render(m.errMsg))
-		sb.WriteString("\n\n")
-		m.errMsg = "" // Clear after displaying
+		sb.WriteString("\n")
 	}
 
 	// Success message
 	if m.successMsg != "" {
 		sb.WriteString(successStyle.Render(m.successMsg))
-		sb.WriteString("\n\n")
-		m.successMsg = "" // Clear after displaying
+		sb.WriteString("\n")
 	}
+
+	sb.WriteString("\n")
 
 	// Table header
 	sb.WriteString(tableHeaderStyle.Render(
 		fmt.Sprintf("%s %s %s %s %s",
 			padRight("PROTO", 5),
 			padRight("PORT", 6),
-			padRight("PID", 6),
+			padRight("PID", 8),
 			padRight("PROCESS", 20),
 			"STATE"),
 	))
@@ -477,7 +500,7 @@ func (m *Model) View() string {
 	// Footer
 	sb.WriteString("\n")
 	sb.WriteString(footerStyle.Render(
-		"[↑/↓] Navigate [PgUp/PgDn] Page [k] Kill [r] Refresh [/] Filter [h] Help [q] Quit",
+		"[↑/↓/j/k] Navigate [PgUp/PgDn] Page [x] Kill [r] Refresh [/] Filter [h] Help [q] Quit",
 	))
 
 	return sb.String()
@@ -497,7 +520,7 @@ func (m *Model) renderRow(entry models.PortEntry) string {
 	return fmt.Sprintf("%s %s %s %s %s",
 		protocolStyle.Render(padRight(entry.Protocol, 5)),
 		padRight(fmt.Sprintf("%d", entry.Port), 6),
-		padRight(fmt.Sprintf("%d", entry.PID), 6),
+		padRight(fmt.Sprintf("%d", entry.PID), 8),
 		padRight(truncate(entry.ProcessName, 18), 20),
 		stateStyle.Render(entry.State),
 	)
@@ -524,11 +547,11 @@ func (m *Model) renderHelp() string {
 		{"↑/↓ or j/k", "Navigate list"},
 		{"PgUp/PgDn", "Change page"},
 		{"Enter", "View process details"},
-		{"k", "Kill selected process"},
+		{"x / Shift+K", "Kill selected process"},
 		{"r", "Refresh port list"},
 		{"/", "Search/filter mode"},
 		{"h", "Show this help"},
-		{"q", "Quit"},
+		{"q / Ctrl+C", "Quit"},
 		{"Esc", "Clear filter / Close dialog"},
 	}
 
@@ -618,9 +641,10 @@ func formatUptime(d time.Duration) string {
 		return "unknown"
 	}
 
-	days := int(d.Hours() / 24)
-	hours := int(d.Hours()) % 60
-	minutes := int(d.Minutes()) % 60
+	totalMinutes := int(d.Minutes())
+	days := totalMinutes / (60 * 24)
+	hours := (totalMinutes / 60) % 24
+	minutes := totalMinutes % 60
 
 	if days > 0 {
 		return fmt.Sprintf("%dd %dh %dm", days, hours, minutes)

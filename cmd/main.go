@@ -219,7 +219,7 @@ Keyboard Shortcuts (TUI mode):
   ↑/↓ or j/k    Navigate list
   PgUp/PgDn      Change page
   Enter          View process details
-  k              Kill selected process
+  x / Shift+K    Kill selected process
   r              Refresh port list
   /              Search/filter mode
   h              Show help
