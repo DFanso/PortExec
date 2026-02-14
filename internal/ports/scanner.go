@@ -22,7 +22,7 @@ func NewScanner() *Scanner {
 
 // GetListeningPorts returns all listening ports with process information
 func (s *Scanner) GetListeningPorts() ([]models.PortEntry, error) {
-	return s.GetConnections([]string{"listen", "established"})
+	return s.GetConnections([]string{"LISTENING", "ESTABLISHED"})
 }
 
 // GetConnections returns connections filtered by states
