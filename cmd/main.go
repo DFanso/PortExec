@@ -7,6 +7,7 @@ import (
 	"portexec/internal/models"
 	"portexec/internal/ports"
 	"portexec/internal/tui"
+	"portexec/internal/version"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -203,9 +204,8 @@ func parsePort(port string) uint32 {
 }
 
 func printUsage() {
-	fmt.Println(`PortExec v1.0 - Port Process Management Tool
-
-Usage:
+	fmt.Printf("PortExec v%s - Port Process Management Tool\n\n", version.Version)
+	fmt.Print(`Usage:
   portexec                    Start interactive TUI
   portexec list [port]       List processes on ports
   portexec kill <port>       Kill process on port
@@ -217,12 +217,13 @@ Options:
 
 Keyboard Shortcuts (TUI mode):
   ↑/↓ or j/k    Navigate list
-  Enter         View process details
-  k             Kill selected process
-  r             Refresh port list
-  /             Search/filter mode
-  h             Show help
-  q             Quit
+  PgUp/PgDn      Change page
+  Enter          View process details
+  k              Kill selected process
+  r              Refresh port list
+  /              Search/filter mode
+  h              Show help
+  q              Quit
 
 Examples:
   portexec              # Start interactive TUI

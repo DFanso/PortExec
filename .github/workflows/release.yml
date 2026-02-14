@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Update version
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          (Get-Content internal\version\version.go) -replace 'var Version = ".*"', "var Version = `"$version`"" | Set-Content internal\version\version.go
+        shell: pwsh
+
+      - name: Build
+        run: |
+          go build -ldflags="-s -w" -o portexec.exe ./cmd/main.go
+
+      - name: Create checksums
+        run: |
+          certutil -hashfile portexec.exe SHA256 | Select-Object -Last 1 > checksums.txt
+        shell: pwsh
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            portexec.exe
+            checksums.txt
+          body: |
+            ## Changes
+            - See GitHub releases for changelog
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

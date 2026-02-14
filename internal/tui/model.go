@@ -5,6 +5,7 @@ import (
 	"portexec/internal/killer"
 	"portexec/internal/models"
 	"portexec/internal/ports"
+	"portexec/internal/version"
 	"strings"
 	"sync"
 	"time"
@@ -383,7 +384,7 @@ func (m *Model) View() string {
 	var sb strings.Builder
 
 	// Header
-	sb.WriteString(headerStyle.Render("PortExec v1.0"))
+	sb.WriteString(headerStyle.Render(fmt.Sprintf("PortExec v%s", version.Version)))
 	sb.WriteString("\n\n")
 
 	// Admin warning
