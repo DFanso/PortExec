@@ -76,11 +76,11 @@ func InitialModel() *Model {
 
 // Init initializes the model
 func (m *Model) Init() tea.Cmd {
-	return m.refresh
+	return m.refresh()
 }
 
 // Update handles messages
-func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return m.handleKeyPress(msg)
@@ -138,7 +138,8 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 
 	// If showing details
 	if m.showDetails {
-		if msg.Key == tea.KeyEsc || msg.Key == tea.KeyEnter {
+		key := msg.String()
+		if key == "esc" || key == "enter" {
 			m.showDetails = false
 		}
 		return m, nil
@@ -149,10 +150,11 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case "k":
-		return m.handleKill(), nil
+		m2, cmd := m.handleKill()
+		return m2, cmd
 
 	case "r":
-		return m, m.refresh
+		return m, m.refresh()
 
 	case "/":
 		m.searchMode = true
@@ -163,7 +165,7 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 		m.showHelp = true
 		return m, nil
 
-	case "up", "k": // vi style
+	case "up", "w": // vi style - up arrow or w
 		if m.selected > 0 {
 			m.selected--
 		}
@@ -197,20 +199,19 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 
 // handleSearchInput handles input in search mode
 func (m *Model) handleSearchInput(msg tea.KeyMsg) (*Model, tea.Cmd) {
-	switch msg.Key {
-	case tea.KeyEsc:
+	switch msg.String() {
+	case "esc":
 		m.searchMode = false
 		m.searchQuery = ""
 		return m, nil
 
-	case tea.KeyEnter:
+	case "enter":
 		m.searchMode = false
-		// Apply filter
 		m.applyFilterFromSearch()
 		m.selected = 0
 		return m, nil
 
-	case tea.KeyBackspace:
+	case "backspace":
 		if len(m.searchQuery) > 0 {
 			m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
 		}
@@ -284,8 +285,7 @@ func (m *Model) handleKillConfirm(msg tea.KeyMsg) (*Model, tea.Cmd) {
 		result := m.kill.Kill(entry.PID)
 		if result.Success {
 			m.successMsg = result.Message
-			// Refresh the list
-			return m, m.refresh
+			return m, m.refresh()
 		} else {
 			m.errMsg = result.Message
 		}

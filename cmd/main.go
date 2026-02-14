@@ -27,14 +27,17 @@ func main() {
 			printUsage()
 			os.Exit(0)
 		}
-	}
 
-	// Check for CLI mode flags
-	hasCLIFlags := false
-	for _, arg := range os.Args[1:] {
-		if arg == "--port" || arg == "-p" || arg == "--kill" || arg == "-k" || arg == "--list" || arg == "-l" || arg == "--path" {
-			hasCLIFlags = true
-			break
+		// Check for CLI mode commands
+		cliCommands := map[string]bool{
+			"list":  true,
+			"kill":  true,
+			"check": true,
+		}
+
+		if cliCommands[os.Args[1]] {
+			runCLI()
+			return
 		}
 	}
 

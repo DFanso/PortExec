@@ -142,11 +142,11 @@ func (s *Scanner) formatState(status string) string {
 }
 
 // protocolString returns the protocol name
-func (s *Scanner) protocolString(t gopsutilnet.ConnectionType) string {
+func (s *Scanner) protocolString(t uint32) string {
 	switch t {
-	case gopsutilnet.TCP:
+	case 1:
 		return "TCP"
-	case gopsutilnet.UDP:
+	case 2:
 		return "UDP"
 	default:
 		return "UNKNOWN"
