@@ -41,11 +41,6 @@ func main() {
 		}
 	}
 
-	if hasCLIFlags {
-		runCLI()
-		return
-	}
-
 	// Run TUI mode
 	runTUI()
 }
